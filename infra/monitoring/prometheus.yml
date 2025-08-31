@@ -1,0 +1,76 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "alerts.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'gateway'
+    static_configs:
+      - targets: ['gateway:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'speech-service'
+    static_configs:
+      - targets: ['speech:8002']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  - job_name: 'intent-service'
+    static_configs:
+      - targets: ['intent:8003']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  - job_name: 'orchestrator-service'
+    static_configs:
+      - targets: ['orchestrator:8004']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  - job_name: 'rag-service'
+    static_configs:
+      - targets: ['rag:8005']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  - job_name: 'tts-service'
+    static_configs:
+      - targets: ['tts:8006']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  - job_name: 'llm-service'
+    static_configs:
+      - targets: ['llm:8007']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  - job_name: 'analytics-service'
+    static_configs:
+      - targets: ['analytics:8008']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  - job_name: 'redis-cluster'
+    static_configs:
+      - targets: ['redis-master:7000', 'redis-replica1:7001', 'redis-replica2:7002']
+    scrape_interval: 15s
+
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres:5432']
+    scrape_interval: 30s
+

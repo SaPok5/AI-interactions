@@ -1,0 +1,37 @@
+# FastAPI and ASGI server
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+websockets==12.0
+
+# Core dependencies
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Audio processing (lightweight)
+soundfile==0.12.1
+numpy==1.24.3
+webrtcvad==2.0.10
+librosa==0.10.1
+
+# Speech recognition (optimized)
+faster-whisper==0.10.0
+
+# Language detection
+langdetect==1.0.9
+
+# Cache and messaging
+redis==5.0.1
+redis[hiredis]==5.0.1
+
+# Monitoring
+prometheus-client==0.19.0
+structlog==23.2.0
+
+# Utilities
+python-dotenv==1.0.0
+httpx==0.25.2
+python-multipart==0.0.6
+
+# Performance optimizations
+uvloop==0.19.0
+httptools==0.6.1

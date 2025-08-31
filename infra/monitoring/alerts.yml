@@ -1,0 +1,107 @@
+groups:
+- name: voice_assistant_alerts
+  rules:
+  # High-level service availability
+  - alert: ServiceDown
+    expr: up == 0
+    for: 30s
+    labels:
+      severity: critical
+    annotations:
+      summary: "Service {{ $labels.instance }} is down"
+      description: "{{ $labels.instance }} has been down for more than 30 seconds."
+
+  # Gateway performance alerts
+  - alert: HighWebSocketConnections
+    expr: websocket_connections_active > 1000
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High WebSocket connection count"
+      description: "WebSocket connections: {{ $value }}"
+
+  - alert: HighResponseTime
+    expr: http_request_duration_seconds{quantile="0.95"} > 2
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High response time detected"
+      description: "95th percentile response time is {{ $value }}s"
+
+  # Memory and CPU alerts
+  - alert: HighMemoryUsage
+    expr: (container_memory_usage_bytes / container_spec_memory_limit_bytes) > 0.9
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High memory usage on {{ $labels.name }}"
+      description: "Memory usage is {{ $value | humanizePercentage }}"
+
+  - alert: HighCPUUsage
+    expr: rate(container_cpu_usage_seconds_total[5m]) > 0.8
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High CPU usage on {{ $labels.name }}"
+      description: "CPU usage is {{ $value | humanizePercentage }}"
+
+  # TTS/Speech specific alerts
+  - alert: TTSHighLatency
+    expr: tts_synthesis_duration_seconds{quantile="0.95"} > 3
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: "TTS synthesis latency is high"
+      description: "95th percentile TTS latency: {{ $value }}s"
+
+  - alert: ASRHighLatency
+    expr: asr_processing_duration_seconds{quantile="0.95"} > 1
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: "ASR processing latency is high"
+      description: "95th percentile ASR latency: {{ $value }}s"
+
+  # Redis cluster alerts
+  - alert: RedisClusterDown
+    expr: redis_up == 0
+    for: 30s
+    labels:
+      severity: critical
+    annotations:
+      summary: "Redis cluster node down"
+      description: "Redis node {{ $labels.instance }} is down"
+
+  - alert: RedisHighMemory
+    expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Redis memory usage high"
+      description: "Redis memory usage: {{ $value | humanizePercentage }}"
+
+  # LLM service alerts
+  - alert: LLMHighTokenUsage
+    expr: rate(llm_tokens_generated_total[5m]) > 10000
+    for: 2m
+    labels:
+      severity: info
+    annotations:
+      summary: "High LLM token usage"
+      description: "Token generation rate: {{ $value }}/min"
+
+  - alert: LLMProviderDown
+    expr: llm_provider_available == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "LLM provider unavailable"
+      description: "Provider {{ $labels.provider }} is down"

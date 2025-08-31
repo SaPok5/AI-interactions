@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+</head>
+<body>
+    <div id="messages"></div>
+    <input type="text" id="messageInput" placeholder="Type a message...">
+    <button onclick="sendMessage()">Send</button>
+    <button onclick="connect()">Connect</button>
+    
+    <script>
+        let ws = null;
+        
+        function connect() {
+            // Use the auth token from your browser's localStorage
+            const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiMWM1ODZkOWMtMDYxNi00ZDJhLWE1NDEtZmQwMWY0MTY1YWM5IiwiZXhwIjoxNzU3MjMxMDg0LCJpYXQiOjE3NTY2MjYyODR9.tfFa-gRBm6lJak4detThoD5u_5tFWE1NOyY1hcOyK6s';
+            ws = new WebSocket(`ws://localhost:8080/ws?token=${token}`);
+            
+            ws.onopen = function() {
+                addMessage('Connected to WebSocket');
+                // Send auth message
+                ws.send(JSON.stringify({
+                    type: 'auth',
+                    token: token,
+                    session_id: 'test_session_' + Date.now()
+                }));
+            };
+            
+            ws.onmessage = function(event) {
+                const message = JSON.parse(event.data);
+                addMessage('Received: ' + JSON.stringify(message, null, 2));
+            };
+            
+            ws.onclose = function() {
+                addMessage('WebSocket closed');
+            };
+            
+            ws.onerror = function(error) {
+                addMessage('WebSocket error: ' + error);
+            };
+        }
+        
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            if (ws && input.value) {
+                const message = {
+                    type: 'text',
+                    text: input.value,
+                    session_id: 'test_session_' + Date.now()
+                };
+                ws.send(JSON.stringify(message));
+                addMessage('Sent: ' + input.value);
+                input.value = '';
+            }
+        }
+        
+        function addMessage(text) {
+            const div = document.createElement('div');
+            div.textContent = new Date().toLocaleTimeString() + ': ' + text;
+            document.getElementById('messages').appendChild(div);
+        }
+        
+        // Auto-connect on page load
+        connect();
+    </script>
+</body>
+</html>

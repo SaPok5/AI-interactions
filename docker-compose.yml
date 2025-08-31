@@ -1,0 +1,408 @@
+
+services:
+  # API Gateway - Entry point for all requests
+  gateway:
+    build:
+      context: ./services/gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=development
+      - REDIS_URL=redis://redis:6379
+      - AUTH_SERVICE_URL=http://auth:8001
+      - SPEECH_SERVICE_URL=http://speech:8002
+      - INTENT_SERVICE_URL=http://intent:8003
+      - ORCHESTRATOR_URL=http://orchestrator:8004
+      - JWT_SECRET=dev-secret-key-change-in-production
+    depends_on:
+      - redis
+      - auth
+    networks:
+      - voice-assistant
+    volumes:
+      - ./services/gateway:/app
+      - /app/node_modules
+    restart: unless-stopped
+
+  # Authentication Service
+  auth:
+    build:
+      context: ./services/auth
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:password@postgres:5432/voice_assistant
+      - SECRET_KEY=dev-secret-key-change-in-production
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - voice-assistant
+    volumes:
+      - ./services/auth:/app
+    restart: unless-stopped
+
+  # Speech Processing Service
+  speech:
+    build:
+      context: ./services/speech
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - MODEL_PATH=/models
+      - REDIS_URL=redis://redis:6379
+      - GPU_ENABLED=true
+      - CUDA_VISIBLE_DEVICES=0
+    volumes:
+      - ./services/speech:/app
+      - ./data/models:/models:ro
+    networks:
+      - voice-assistant
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 8G
+        reservations:
+          cpus: '2.0'
+          memory: 4G
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # Intent Recognition Service
+  intent:
+    build:
+      context: ./services/intent
+      dockerfile: Dockerfile
+    ports:
+      - "8003:8003"
+    environment:
+      - MODEL_PATH=/models
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./services/intent:/app
+      - ./data/models:/models:ro
+    networks:
+      - voice-assistant
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+
+  # Orchestrator Service
+  orchestrator:
+    build:
+      context: ./services/orchestrator
+      dockerfile: Dockerfile
+    ports:
+      - "8004:8004"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - RAG_SERVICE_URL=http://rag:8005
+      - TTS_SERVICE_URL=http://tts:8006
+      - LLM_SERVICE_URL=http://llm:8007
+      - ANALYTICS_URL=http://analytics:8008
+      - SPEECH_SERVICE_URL=http://speech:8002
+      - INTENT_SERVICE_URL=http://intent:8003
+    depends_on:
+      speech:
+        condition: service_healthy
+      intent:
+        condition: service_healthy
+      rag:
+        condition: service_healthy
+      tts:
+        condition: service_healthy
+      llm:
+        condition: service_healthy
+      analytics:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - voice-assistant
+    volumes:
+      - ./services/orchestrator:/app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # RAG Service
+  rag:
+    build:
+      context: ./services/rag
+      dockerfile: Dockerfile
+    ports:
+      - "8005:8005"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - VECTOR_DB_TYPE=chromadb
+      - VECTOR_DB_PATH=/app/data/vectors
+      - EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+    depends_on:
+      - redis
+    networks:
+      - voice-assistant
+    user: "0:0"
+    volumes:
+      - ./services/rag:/app
+      - ./data/documents:/app/data/documents
+      - rag_data:/app/data/vectors
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Text-to-Speech Service
+  tts:
+    build:
+      context: ./services/tts
+      dockerfile: Dockerfile
+    ports:
+      - "8006:8006"
+    environment:
+      - MODEL_PATH=/models
+      - REDIS_URL=redis://redis:6379
+      - GPU_ENABLED=true
+      - CUDA_VISIBLE_DEVICES=1
+    volumes:
+      - ./services/tts:/app
+      - ./data/models:/models:ro
+    networks:
+      - voice-assistant
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 8G
+        reservations:
+          cpus: '2.0'
+          memory: 4G
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # LLM Service
+  llm:
+    build:
+      context: ./services/llm
+      dockerfile: Dockerfile
+    ports:
+      - "8007:8007"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DEFAULT_PROVIDER=openai
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - ENABLE_LOCAL_MODELS=false
+    volumes:
+      - ./services/llm:/app
+      - llm_data:/app/data
+    networks:
+      - voice-assistant
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8007/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 8G
+
+  # Analytics Service
+  analytics:
+    build:
+      context: ./services/analytics
+      dockerfile: Dockerfile
+    ports:
+      - "8008:8008"
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/voice_assistant
+      - REDIS_URL=redis://redis:6379
+      - PROMETHEUS_URL=http://prometheus:9090
+    depends_on:
+      - postgres
+      - redis
+      - prometheus
+    networks:
+      - voice-assistant
+    volumes:
+      - ./services/analytics:/app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8008/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=voice_assistant
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - voice-assistant
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - voice-assistant
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  # Monitoring Stack
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./infra/monitoring/alerts.yml:/etc/prometheus/alerts.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    networks:
+      - voice-assistant
+    restart: unless-stopped
+
+  # Alertmanager for notifications
+  alertmanager:
+    image: prom/alertmanager:latest
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./infra/monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    networks:
+      - voice-assistant
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infra/monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    networks:
+      - voice-assistant
+    restart: unless-stopped
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "16686:16686"
+      - "14268:14268"
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    networks:
+      - voice-assistant
+    restart: unless-stopped
+
+  # Nginx Load Balancer & CDN
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "8090:80"
+      - "8443:443"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./clients/demo:/var/www/static
+      - ./infra/nginx/ssl:/etc/nginx/ssl
+    networks:
+      - voice-assistant
+    restart: unless-stopped
+    depends_on:
+      - gateway
+      - demo
+
+  # Demo Application
+  demo:
+    build:
+      context: ./clients/demo
+      dockerfile: Dockerfile
+    environment:
+      - REACT_APP_API_URL=http://localhost/api
+      - REACT_APP_WS_URL=ws://localhost/ws
+    volumes:
+      - ./clients/demo:/app
+      - /app/node_modules
+    networks:
+      - voice-assistant
+    restart: unless-stopped
+    expose:
+      - "3000"
+
+networks:
+  voice-assistant:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  rag_data:
+  llm_data:
+  prometheus_data:
+  grafana_data:
