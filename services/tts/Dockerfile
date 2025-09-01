@@ -4,19 +4,19 @@ FROM python:3.11-slim
 ENV PIP_DEFAULT_TIMEOUT=120 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Install system dependencies for audio processing
+# Install system dependencies including curl
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     curl \
+    wget \
     ffmpeg \
     libsndfile1 \
     libasound2 \
     espeak-ng \
-    libespeak-ng1 \
-    # Optional legacy packages (best-effort; may not exist on newer Debian)
-    libespeak1 || true \
-    espeak || true \
+    python3-dev \
+    cmake \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Create compatibility symlink if only libespeak-ng is present
@@ -33,15 +33,21 @@ WORKDIR /app
 # Copy requirements first for better caching
 COPY requirements.txt .
 
-# Install Python dependencies
+# Install Python dependencies first
 RUN python -m pip install --upgrade pip setuptools wheel \
     && pip install --no-cache-dir --timeout 120 --retries 10 -r requirements.txt
+
+# Install Piper TTS binary
+RUN curl -L -o /tmp/piper.tar.gz "https://github.com/rhasspy/piper/releases/download/v1.2.0/piper_amd64.tar.gz" \
+    && tar -xzf /tmp/piper.tar.gz -C /usr/local/bin/ --strip-components=1 \
+    && chmod +x /usr/local/bin/piper \
+    && rm /tmp/piper.tar.gz
 
 # Copy application code
 COPY app/ ./app/
 
-# Create directories for audio storage
-RUN mkdir -p /app/data/audio /app/data/models
+# Create directories for audio storage and models
+RUN mkdir -p /app/data/audio /app/data/models/piper /app/data/models/coqui
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
@@ -51,7 +57,7 @@ USER appuser
 EXPOSE 8006
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=60s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8006/health || exit 1
 
 # Run the application

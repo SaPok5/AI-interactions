@@ -30,6 +30,11 @@
             ws.onmessage = function(event) {
                 const message = JSON.parse(event.data);
                 addMessage('Received: ' + JSON.stringify(message, null, 2));
+                
+                // Handle audio_response messages
+                if (message.type === 'audio_response' && message.data?.audio_data) {
+                    addMessage('Audio response received and would be played');
+                }
             };
             
             ws.onclose = function() {

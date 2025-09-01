@@ -68,19 +68,32 @@ async def intent_result_subscriber(
     workflow_engine: WorkflowEngine,
     speculative_executor: SpeculativeExecutor
 ):
-    """Subscribe to intent results and trigger workflows"""
+    """Subscribe to intent results and trigger workflows with enhanced error handling"""
     pubsub = redis_client.pubsub()
-    await pubsub.subscribe("intent_results")
+    await pubsub.subscribe("intent_results", "orchestrator_input")
+    
+    logger.info("Orchestrator service subscribed to Redis channels")
     
     async for message in pubsub.listen():
         if message["type"] == "message":
             try:
-                data = json.loads(message["data"])
+                logger.info("Received Redis message", channel=message["channel"].decode(), data=message["data"])
+                
+                # Handle potential binary data
+                message_data = message["data"]
+                if isinstance(message_data, bytes):
+                    message_data = message_data.decode()
+                
+                data = json.loads(message_data)
+                logger.info("Processing message", message_type=data.get("type"), connection_id=data.get("connection_id"))
+                
                 await process_intent_result(
                     data, workflow_engine, speculative_executor, redis_client
                 )
+            except json.JSONDecodeError as je:
+                logger.error("Invalid JSON in Redis message", error=str(je), raw_data=message["data"])
             except Exception as e:
-                logger.error("Error processing intent result", error=str(e))
+                logger.error("Error processing intent result", error=str(e), message_data=message["data"])
 
 async def process_intent_result(
     data: Dict[str, Any],
@@ -88,18 +101,64 @@ async def process_intent_result(
     speculative_executor: SpeculativeExecutor,
     redis_client: redis.Redis
 ):
-    """Process intent result and orchestrate response"""
+    """Process intent result and orchestrate response with enhanced error handling"""
     try:
         connection_id = data.get("connection_id")
-        session_id = data.get("session_id")
+        message_type = data.get("type")
         text = data.get("text", "")
+        
+        logger.info("Processing intent result", message_type=message_type, connection_id=connection_id, has_text=bool(text))
+        
+        if not connection_id:
+            logger.warning("Missing connection_id in message", data=data)
+            return
+        
+        # Handle voice input directly with RAG-powered AI response
+        if message_type == "voice_input":
+            if not text or text.strip() == "":
+                logger.warning("Empty voice input received", connection_id=connection_id)
+                # Send a response indicating empty input
+                response = {
+                    "type": "ai_response",
+                    "connection_id": connection_id,
+                    "data": {
+                        "text": "I didn't catch that. Could you please try speaking again?",
+                        "auto_generated": False
+                    }
+                }
+                await redis_client.publish("orchestrator_output", json.dumps(response))
+                return
+            
+            logger.info("Processing voice input", text=text, connection_id=connection_id)
+            # Generate AI response using RAG and LLM services
+            ai_response = await generate_ai_response_with_rag(text, redis_client)
+            
+            if not ai_response:
+                logger.warning("Empty AI response generated", connection_id=connection_id)
+                ai_response = "I'm sorry, I couldn't process that request."
+            
+            logger.info("Generated AI response", response=ai_response[:100], connection_id=connection_id)
+            
+            # Send AI response back to gateway
+            response = {
+                "type": "ai_response",
+                "connection_id": connection_id,
+                "data": {
+                    "text": ai_response,
+                    "auto_generated": False
+                }
+            }
+            
+            logger.info("Publishing AI response to orchestrator_output", connection_id=connection_id)
+            await redis_client.publish("orchestrator_output", json.dumps(response))
+            return
+        
+        # Handle legacy intent-based processing
+        session_id = data.get("session_id")
         is_final = data.get("is_final", False)
         intent = data.get("intent", {})
         entities = data.get("entities", [])
         speculative_intents = data.get("speculative_intents", [])
-        
-        if not connection_id:
-            return
         
         # Execute main workflow
         workflow_result = await workflow_engine.execute_workflow(
@@ -129,10 +188,93 @@ async def process_intent_result(
             "is_final": is_final
         }
         
-        await redis_client.publish("orchestrator_responses", json.dumps(response))
+        await redis_client.publish("orchestrator_output", json.dumps(response))
         
     except Exception as e:
         logger.error("Error processing intent result", error=str(e))
+
+async def generate_ai_response_with_rag(user_text: str, redis_client: redis.Redis) -> str:
+    """Generate AI response using RAG and LLM services"""
+    try:
+        import aiohttp
+        
+        # First, search for relevant documents using RAG service
+        rag_response = None
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    "http://rag:8005/search",
+                    json={
+                        "query": user_text,
+                        "limit": 3,
+                        "threshold": 0.7
+                    }
+                ) as resp:
+                    if resp.status == 200:
+                        rag_response = await resp.json()
+        except Exception as e:
+            logger.warning("RAG service unavailable, using fallback", error=str(e))
+        
+        # Prepare context for LLM
+        context = ""
+        if rag_response and rag_response.get("chunks"):
+            context = "\n\n".join([
+                f"Document: {chunk.get('metadata', {}).get('filename', 'Unknown')}\n{chunk.get('content', '')}"
+                for chunk in rag_response["chunks"][:3]
+            ])
+        
+        # Generate response using LLM service
+        try:
+            async with aiohttp.ClientSession() as session:
+                messages = [
+                    {
+                        "role": "system",
+                        "content": f"""You are a helpful AI assistant. Answer the user's question based on the provided context from their uploaded documents.
+
+Context from documents:
+{context if context else "No relevant documents found."}
+
+Instructions:
+- If you have relevant context, provide a detailed answer based on the documents
+- If no relevant context is available, provide a helpful general response
+- Be conversational and engaging
+- Keep responses concise but informative"""
+                    },
+                    {
+                        "role": "user", 
+                        "content": user_text
+                    }
+                ]
+                
+                async with session.post(
+                    "http://llm:8007/chat",
+                    json={
+                        "messages": messages,
+                        "temperature": 0.7,
+                        "max_tokens": 300
+                    }
+                ) as resp:
+                    if resp.status == 200:
+                        llm_response = await resp.json()
+                        return llm_response.get("content", "I'm sorry, I couldn't generate a response at the moment.")
+        except Exception as e:
+            logger.warning("LLM service unavailable, using fallback", error=str(e))
+        
+        # Fallback responses if services are unavailable
+        user_text_lower = user_text.lower().strip()
+        
+        if any(greeting in user_text_lower for greeting in ["hello", "hi", "hey", "good morning", "good afternoon"]):
+            return "Hello! I'm here to help you with your documents and answer any questions you have. What would you like to know?"
+        
+        elif any(question in user_text_lower for question in ["what", "how", "why", "when", "where", "who"]):
+            return f"That's an interesting question about '{user_text}'. I'd be happy to help you understand this better. Could you provide more details or upload a document for me to analyze?"
+        
+        else:
+            return f"I understand you're asking about '{user_text}'. I'm here to help you explore topics and analyze documents. Please feel free to upload documents or ask more specific questions."
+            
+    except Exception as e:
+        logger.error("Error generating AI response", error=str(e))
+        return "I apologize, but I'm having trouble processing your request right now. Please try again."
 
 @app.post("/conversation", response_model=ConversationResponse)
 async def process_conversation(request: ConversationRequest):

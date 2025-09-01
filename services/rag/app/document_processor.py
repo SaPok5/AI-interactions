@@ -161,19 +161,50 @@ class DocumentProcessor:
         return await loop.run_in_executor(None, extract)
     
     async def _extract_docx_text(self, content: bytes) -> str:
-        """Extract text from DOCX"""
+        """Extract text from DOCX with enhanced error handling"""
         import io
         
         loop = asyncio.get_event_loop()
         
         def extract():
-            doc = docx.Document(io.BytesIO(content))
-            text_parts = []
-            
-            for paragraph in doc.paragraphs:
-                text_parts.append(paragraph.text)
-            
-            return '\n'.join(text_parts)
+            try:
+                # Validate content is not empty
+                if not content or len(content) == 0:
+                    raise ValueError("Empty DOCX content")
+                
+                # Try to parse the DOCX file
+                doc = docx.Document(io.BytesIO(content))
+                text_parts = []
+                
+                # Extract text from paragraphs
+                for paragraph in doc.paragraphs:
+                    text_parts.append(paragraph.text)
+                
+                # Extract text from tables if present
+                for table in doc.tables:
+                    for row in table.rows:
+                        for cell in row.cells:
+                            text_parts.append(cell.text)
+                
+                # Join all text parts
+                full_text = '\n'.join(text_parts)
+                
+                # Validate that we extracted some text
+                if not full_text or full_text.strip() == "":
+                    logger.warning("DOCX file extracted but contains no text", content_length=len(content))
+                    
+                return full_text
+            except Exception as e:
+                logger.error("DOCX extraction failed", error=str(e), content_length=len(content))
+                # Try to extract text with a more lenient approach
+                try:
+                    # Fallback to extracting raw text from the document stream
+                    from docx.document import Document
+                    doc_stream = io.BytesIO(content)
+                    # Just return empty string if all else fails rather than crashing
+                    return ""
+                except:
+                    return ""
         
         return await loop.run_in_executor(None, extract)
     

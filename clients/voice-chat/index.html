@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Voice Chat - ChatGPT Style</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>AI Voice Assistant</h1>
+                <div class="connection-status" id="connectionStatus">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Connecting...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Chat Interface -->
+        <main class="main-content">
+            <!-- Document Upload Section -->
+            <div class="document-section" id="documentSection">
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-content">
+                        <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14,2 14,8 20,8"></polyline>
+                            <line x1="16" y1="13" x2="8" y2="13"></line>
+                            <line x1="16" y1="17" x2="8" y2="17"></line>
+                            <polyline points="10,9 9,9 8,9"></polyline>
+                        </svg>
+                        <h3>Upload Document</h3>
+                        <p>Drop files here or click to browse</p>
+                        <p class="file-types">Supports PDF, DOC, DOCX, TXT</p>
+                    </div>
+                    <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.txt" multiple hidden>
+                </div>
+                
+                <div class="uploaded-files" id="uploadedFiles"></div>
+            </div>
+
+            <!-- Chat Interface -->
+            <div class="chat-container">
+                <!-- Conversation Display -->
+                <div class="conversation" id="conversation">
+                    <div class="welcome-message">
+                        <div class="ai-avatar">
+                            <svg viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                            </svg>
+                        </div>
+                        <div class="message-content">
+                            <p>Hello! I'm your AI voice assistant. Upload a document to get started, then we can have a natural conversation about it.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Voice Controls -->
+                <div class="voice-controls">
+                    <div class="voice-visualizer" id="voiceVisualizer">
+                        <div class="wave-container">
+                            <div class="wave-bar"></div>
+                            <div class="wave-bar"></div>
+                            <div class="wave-bar"></div>
+                            <div class="wave-bar"></div>
+                            <div class="wave-bar"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="control-buttons">
+                        <button class="voice-button" id="voiceButton" disabled>
+                            <svg class="mic-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                                <line x1="12" y1="19" x2="12" y2="23"></line>
+                                <line x1="8" y1="23" x2="16" y2="23"></line>
+                            </svg>
+                            <span class="button-text">Hold to Talk</span>
+                        </button>
+                        
+                        <button class="stop-button" id="stopButton" style="display: none;">
+                            <svg viewBox="0 0 24 24" fill="currentColor">
+                                <rect x="6" y="6" width="12" height="12" rx="2"/>
+                            </svg>
+                        </button>
+                    </div>
+                    
+                    <div class="voice-status" id="voiceStatus">
+                        <span>Upload a document to enable voice chat</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Settings Panel -->
+        <div class="settings-panel" id="settingsPanel">
+            <button class="settings-toggle" id="settingsToggle">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M12 1v6m0 6v6m11-7h-6m-6 0H1"></path>
+                </svg>
+            </button>
+            
+            <div class="settings-content">
+                <h3>Voice Settings</h3>
+                
+                <div class="setting-group">
+                    <label for="voiceSelect">Voice</label>
+                    <select id="voiceSelect">
+                        <option value="nova">Nova (Female, Young)</option>
+                        <option value="shimmer">Shimmer (Female, Soft)</option>
+                        <option value="alloy">Alloy (Neutral)</option>
+                        <option value="echo">Echo (Male, Clear)</option>
+                        <option value="fable">Fable (British, Expressive)</option>
+                        <option value="onyx">Onyx (Male, Deep)</option>
+                    </select>
+                </div>
+                
+                <div class="setting-group">
+                    <label for="speedSlider">Speech Speed</label>
+                    <input type="range" id="speedSlider" min="0.5" max="2" step="0.1" value="1">
+                    <span class="speed-value">1.0x</span>
+                </div>
+                
+                <div class="setting-group">
+                    <label>
+                        <input type="checkbox" id="autoPlayback" checked>
+                        Auto-play AI responses
+                    </label>
+                </div>
+                
+                <div class="setting-group">
+                    <label>
+                        <input type="checkbox" id="showTranscript" checked>
+                        Show live transcript
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Live Transcript -->
+        <div class="transcript-panel" id="transcriptPanel">
+            <div class="transcript-header">
+                <h3>Live Transcript</h3>
+                <button class="transcript-toggle" id="transcriptToggle">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M18 6L6 18M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            <div class="transcript-content" id="transcriptContent">
+                <p class="transcript-placeholder">Transcript will appear here during conversation...</p>
+            </div>
+            <div class="transcript-controls">
+                <button id="clearTranscript">Clear</button>
+                <button id="exportTranscript">Export</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Audio Element for Playback -->
+    <audio id="audioPlayer" preload="auto"></audio>
+
+    <script src="app.js"></script>
+</body>
+</html>

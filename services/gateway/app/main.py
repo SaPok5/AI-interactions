@@ -33,8 +33,6 @@ from .utils.redis_pool import redis_pool
 setup_logging()
 logger = structlog.get_logger(__name__)
 
-# Global connection manager
-connection_manager = ConnectionManager()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -48,8 +46,11 @@ async def lifespan(app: FastAPI):
     
     logger.info("✅ Redis connection pool established")
     
-    # Initialize WebSocket handler
-    app.state.ws_handler = WebSocketHandler(connection_manager, app.state.redis)
+    # Initialize shared connection manager
+    app.state.connection_manager = ConnectionManager()
+    
+    # Initialize WebSocket handler with shared connection manager
+    app.state.ws_handler = WebSocketHandler(app.state.redis, app.state.connection_manager)
     
     # Start Redis subscribers for service responses
     app.state.subscriber_tasks = []
@@ -121,7 +122,8 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None):
     connection_id = str(uuid.uuid4())
     
     try:
-        await connection_manager.connect(websocket, connection_id, token)
+        # Use the shared connection manager from app state
+        await app.state.connection_manager.connect(websocket, connection_id, token)
         
         # Use the shared WebSocket handler from app state
         handler = app.state.ws_handler
@@ -132,7 +134,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None):
     except Exception as e:
         logger.error("WebSocket connection error", error=str(e), connection_id=connection_id)
     finally:
-        await connection_manager.disconnect(connection_id)
+        await app.state.connection_manager.disconnect(connection_id)
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
@@ -177,33 +179,50 @@ async def root():
 
 async def subscribe_to_service_responses(redis_client: redis.Redis, ws_handler: WebSocketHandler):
     """Subscribe to service response channels"""
-    pubsub = redis_client.pubsub()
-    await pubsub.subscribe(
-        "speech_output",
-        "orchestrator_output", 
-        "tts_output"
-    )
-    
-    logger.info("✅ Subscribed to service response channels")
-    
+    pubsub = None
     try:
+        # Create fresh Redis connection for pubsub
+        pubsub = redis_client.pubsub()
+        
+        # Subscribe to channels
+        await pubsub.subscribe("tts_output", "speech_output", "orchestrator_output")
+        logger.info("✅ Subscribed to service response channels")
+        
+        # Listen for messages
         async for message in pubsub.listen():
             if message["type"] == "message":
+                channel = None
                 try:
-                    data = json.loads(message["data"])
-                    channel = message["channel"].decode("utf-8")
+                    # Handle both bytes and string channel names
+                    raw_channel = message["channel"]
+                    channel = raw_channel.decode("utf-8") if isinstance(raw_channel, bytes) else raw_channel
                     
-                    # Determine service from channel
+                    # Handle both bytes and string data
+                    raw_data = message["data"]
+                    data_str = raw_data.decode("utf-8") if isinstance(raw_data, bytes) else raw_data
+                    data = json.loads(data_str)
+                    
                     service = channel.replace("_output", "")
                     
+                    logger.info("📨 Received service response", service=service, channel=channel, message_type=data.get("type"))
+                    logger.debug("Service response data", data=data)
                     await ws_handler.handle_service_response(service, data)
                     
+                except json.JSONDecodeError as e:
+                    logger.error("Invalid JSON in service response", error=str(e), channel=channel or "unknown")
                 except Exception as e:
-                    logger.error("Error processing service response", error=str(e), channel=channel)
+                    logger.error("Error processing service response", error=str(e), channel=channel or "unknown")
+                    
     except asyncio.CancelledError:
         logger.info("Service response subscriber cancelled")
+    except Exception as e:
+        logger.error("Redis subscriber error", error=str(e))
     finally:
-        await pubsub.close()
+        if pubsub:
+            try:
+                await pubsub.close()
+            except Exception:
+                pass
 
 if __name__ == "__main__":
     import uvicorn

@@ -48,12 +48,22 @@ async def lifespan(app: FastAPI):
         )
     )
     
+    # Start Redis subscriber for direct TTS requests
+    app.state.tts_subscriber = asyncio.create_task(
+        tts_input_subscriber(
+            app.state.redis,
+            app.state.tts_engine,
+            app.state.audio_processor
+        )
+    )
+    
     logger.info("✅ TTS Service initialized")
     
     yield
     
     logger.info("🛑 Shutting down TTS Service")
     app.state.orchestrator_subscriber.cancel()
+    app.state.tts_subscriber.cancel()
     await app.state.redis.close()
 
 app = FastAPI(
@@ -89,6 +99,27 @@ async def orchestrator_response_subscriber(
                 )
             except Exception as e:
                 logger.error("Error processing orchestrator response", error=str(e))
+
+async def tts_input_subscriber(
+    redis_client: redis.Redis,
+    tts_engine: TTSEngine,
+    audio_processor: AudioProcessor
+):
+    """Subscribe to direct TTS requests from gateway"""
+    pubsub = redis_client.pubsub()
+    await pubsub.subscribe("tts_input")
+    logger.info("🎤 Subscribed to tts_input channel")
+    
+    async for message in pubsub.listen():
+        if message["type"] == "message":
+            try:
+                data = json.loads(message["data"])
+                logger.info("📥 Received TTS request", data=data)
+                await process_tts_request(
+                    data, tts_engine, audio_processor, redis_client
+                )
+            except Exception as e:
+                logger.error("Error processing TTS request", error=str(e))
 
 async def process_orchestrator_response(
     data: Dict[str, Any],
@@ -134,6 +165,57 @@ async def process_orchestrator_response(
         
     except Exception as e:
         logger.error("Error processing orchestrator response", error=str(e))
+
+async def process_tts_request(
+    data: Dict[str, Any],
+    tts_engine: TTSEngine,
+    audio_processor: AudioProcessor,
+    redis_client: redis.Redis
+):
+    """Process direct TTS request from gateway"""
+    try:
+        connection_id = data.get("connection_id")
+        text = data.get("text", "")
+        voice_settings = data.get("voice_settings", {})
+        auto_play = data.get("auto_play", False)
+        
+        if not connection_id or not text:
+            logger.warning("Missing connection_id or text in TTS request")
+            return
+        
+        # Extract voice settings
+        voice = voice_settings.get("voice", "alloy")
+        speed = voice_settings.get("speed", 1.0)
+        
+        logger.info("🎵 Synthesizing TTS", text=text[:50], voice=voice, connection_id=connection_id)
+        
+        # Generate speech
+        tts_result = await tts_engine.synthesize(
+            text=text,
+            voice=voice,
+            language="en",
+            speed=speed,
+            session_id=connection_id
+        )
+        
+        if tts_result and tts_result.audio_data:
+            logger.info("✅ TTS synthesis complete", duration_ms=tts_result.duration_ms)
+            
+            # Send audio response back to gateway
+            logger.info("📤 Publishing TTS response to gateway", connection_id=connection_id, channel="tts_output")
+            await redis_client.publish("tts_output", json.dumps({
+                "type": "audio_ready",
+                "connection_id": connection_id,
+                "audio_url": tts_result.audio_url,
+                "audio_data": tts_result.audio_data,
+                "duration_ms": tts_result.duration_ms,
+                "auto_play": auto_play
+            }))
+        else:
+            logger.error("TTS synthesis failed")
+            
+    except Exception as e:
+        logger.error("Error processing TTS request", error=str(e))
 
 @app.post("/synthesize", response_model=TTSResult)
 async def synthesize_text(request: TTSRequest):

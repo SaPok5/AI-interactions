@@ -21,18 +21,20 @@ class VoiceManager:
         try:
             voices = []
             
+            # Piper TTS voices
+            if settings.enable_piper_tts:
+                voices.extend(self._get_piper_voices())
+            
             # Coqui TTS voices
-            if settings.enable_neural_voices:
+            if settings.enable_coqui_tts:
                 voices.extend(self._get_coqui_voices())
             
-            # Edge TTS voices
-            voices.extend(self._get_edge_voices())
-            
-            # gTTS voices (language-based)
-            voices.extend(self._get_gtts_voices())
+            # eSpeak NG voices
+            if settings.enable_espeak_ng:
+                voices.extend(self._get_espeak_voices())
             
             # pyttsx3 voices (optional)
-            if settings.enable_pyttsx3_voices:
+            if settings.enable_pyttsx3:
                 voices.extend(await self._get_pyttsx3_voices())
             else:
                 logger.debug("Skipping pyttsx3 voice enumeration (disabled by config)")
@@ -44,6 +46,44 @@ class VoiceManager:
             logger.error("Failed to load voices", error=str(e))
             # Set default voices as fallback
             self.available_voices = self._get_default_voices()
+    
+    def _get_piper_voices(self) -> List[VoiceInfo]:
+        """Get Piper TTS voices"""
+        return [
+            VoiceInfo(
+                voice_id="en_US-lessac-medium",
+                name="Lessac (Medium)",
+                language="en",
+                gender="male",
+                age="adult",
+                style="clear",
+                engine="piper",
+                neural=True,
+                sample_rate=22050
+            ),
+            VoiceInfo(
+                voice_id="en_US-amy-medium",
+                name="Amy (Medium)",
+                language="en",
+                gender="female",
+                age="adult",
+                style="friendly",
+                engine="piper",
+                neural=True,
+                sample_rate=22050
+            ),
+            VoiceInfo(
+                voice_id="en_US-ryan-high",
+                name="Ryan (High)",
+                language="en",
+                gender="male",
+                age="adult",
+                style="professional",
+                engine="piper",
+                neural=True,
+                sample_rate=22050
+            )
+        ]
     
     def _get_coqui_voices(self) -> List[VoiceInfo]:
         """Get Coqui TTS voices"""
@@ -58,217 +98,82 @@ class VoiceManager:
                 engine="coqui",
                 neural=True,
                 sample_rate=22050
+            )
+        ]
+    
+    def _get_espeak_voices(self) -> List[VoiceInfo]:
+        """Get eSpeak NG voices"""
+        return [
+            # English voices
+            VoiceInfo(
+                voice_id="en",
+                name="English (Default)",
+                language="en",
+                gender="male",
+                age="adult",
+                style="robotic",
+                engine="espeak",
+                neural=False,
+                sample_rate=22050
             ),
             VoiceInfo(
-                voice_id="coqui_vctk",
-                name="VCTK",
+                voice_id="en+f3",
+                name="English (Female)",
                 language="en",
-                gender="mixed",
+                gender="female",
                 age="adult",
-                style="neutral",
-                engine="coqui",
-                neural=True,
+                style="robotic",
+                engine="espeak",
+                neural=False,
+                sample_rate=22050
+            ),
+            VoiceInfo(
+                voice_id="en+m1",
+                name="English (Male 1)",
+                language="en",
+                gender="male",
+                age="adult",
+                style="robotic",
+                engine="espeak",
+                neural=False,
+                sample_rate=22050
+            ),
+            # Other languages
+            VoiceInfo(
+                voice_id="es",
+                name="Spanish",
+                language="es",
+                gender="male",
+                age="adult",
+                style="robotic",
+                engine="espeak",
+                neural=False,
+                sample_rate=22050
+            ),
+            VoiceInfo(
+                voice_id="fr",
+                name="French",
+                language="fr",
+                gender="male",
+                age="adult",
+                style="robotic",
+                engine="espeak",
+                neural=False,
+                sample_rate=22050
+            ),
+            VoiceInfo(
+                voice_id="de",
+                name="German",
+                language="de",
+                gender="male",
+                age="adult",
+                style="robotic",
+                engine="espeak",
+                neural=False,
                 sample_rate=22050
             )
         ]
     
-    def _get_edge_voices(self) -> List[VoiceInfo]:
-        """Get Edge TTS voices"""
-        return [
-            # English voices
-            VoiceInfo(
-                voice_id="en-US-AriaNeural",
-                name="Aria",
-                language="en",
-                gender="female",
-                age="adult",
-                style="friendly",
-                engine="edge",
-                neural=True,
-                sample_rate=24000
-            ),
-            VoiceInfo(
-                voice_id="en-US-GuyNeural",
-                name="Guy",
-                language="en",
-                gender="male",
-                age="adult",
-                style="professional",
-                engine="edge",
-                neural=True,
-                sample_rate=24000
-            ),
-            VoiceInfo(
-                voice_id="en-GB-SoniaNeural",
-                name="Sonia",
-                language="en-GB",
-                gender="female",
-                age="adult",
-                style="british",
-                engine="edge",
-                neural=True,
-                sample_rate=24000
-            ),
-            # Spanish voices
-            VoiceInfo(
-                voice_id="es-ES-ElviraNeural",
-                name="Elvira",
-                language="es",
-                gender="female",
-                age="adult",
-                style="neutral",
-                engine="edge",
-                neural=True,
-                sample_rate=24000
-            ),
-            VoiceInfo(
-                voice_id="es-MX-DaliaNeural",
-                name="Dalia",
-                language="es-MX",
-                gender="female",
-                age="adult",
-                style="mexican",
-                engine="edge",
-                neural=True,
-                sample_rate=24000
-            ),
-            # French voices
-            VoiceInfo(
-                voice_id="fr-FR-DeniseNeural",
-                name="Denise",
-                language="fr",
-                gender="female",
-                age="adult",
-                style="neutral",
-                engine="edge",
-                neural=True,
-                sample_rate=24000
-            ),
-            # German voices
-            VoiceInfo(
-                voice_id="de-DE-KatjaNeural",
-                name="Katja",
-                language="de",
-                gender="female",
-                age="adult",
-                style="neutral",
-                engine="edge",
-                neural=True,
-                sample_rate=24000
-            ),
-            # Italian voices
-            VoiceInfo(
-                voice_id="it-IT-ElsaNeural",
-                name="Elsa",
-                language="it",
-                gender="female",
-                age="adult",
-                style="neutral",
-                engine="edge",
-                neural=True,
-                sample_rate=24000
-            ),
-            # Portuguese voices
-            VoiceInfo(
-                voice_id="pt-BR-FranciscaNeural",
-                name="Francisca",
-                language="pt",
-                gender="female",
-                age="adult",
-                style="brazilian",
-                engine="edge",
-                neural=True,
-                sample_rate=24000
-            ),
-            # Russian voices
-            VoiceInfo(
-                voice_id="ru-RU-SvetlanaNeural",
-                name="Svetlana",
-                language="ru",
-                gender="female",
-                age="adult",
-                style="neutral",
-                engine="edge",
-                neural=True,
-                sample_rate=24000
-            ),
-            # Japanese voices
-            VoiceInfo(
-                voice_id="ja-JP-NanamiNeural",
-                name="Nanami",
-                language="ja",
-                gender="female",
-                age="adult",
-                style="neutral",
-                engine="edge",
-                neural=True,
-                sample_rate=24000
-            ),
-            # Korean voices
-            VoiceInfo(
-                voice_id="ko-KR-SunHiNeural",
-                name="SunHi",
-                language="ko",
-                gender="female",
-                age="adult",
-                style="neutral",
-                engine="edge",
-                neural=True,
-                sample_rate=24000
-            ),
-            # Chinese voices
-            VoiceInfo(
-                voice_id="zh-CN-XiaoxiaoNeural",
-                name="Xiaoxiao",
-                language="zh",
-                gender="female",
-                age="adult",
-                style="neutral",
-                engine="edge",
-                neural=True,
-                sample_rate=24000
-            )
-        ]
-    
-    def _get_gtts_voices(self) -> List[VoiceInfo]:
-        """Get Google TTS voices (language-based)"""
-        languages = [
-            ("en", "English"),
-            ("es", "Spanish"),
-            ("fr", "French"),
-            ("de", "German"),
-            ("it", "Italian"),
-            ("pt", "Portuguese"),
-            ("ru", "Russian"),
-            ("ja", "Japanese"),
-            ("ko", "Korean"),
-            ("zh", "Chinese"),
-            ("ar", "Arabic"),
-            ("hi", "Hindi"),
-            ("tr", "Turkish"),
-            ("pl", "Polish"),
-            ("nl", "Dutch"),
-            ("sv", "Swedish"),
-            ("da", "Danish"),
-            ("no", "Norwegian"),
-            ("fi", "Finnish")
-        ]
-        
-        voices = []
-        for lang_code, lang_name in languages:
-            voices.append(VoiceInfo(
-                voice_id=f"gtts_{lang_code}",
-                name=f"Google {lang_name}",
-                language=lang_code,
-                gender="neutral",
-                age="adult",
-                style="neutral",
-                engine="gtts",
-                neural=False,
-                sample_rate=24000
-            ))
-        
-        return voices
     
     async def _get_pyttsx3_voices(self) -> List[VoiceInfo]:
         """Get pyttsx3 system voices"""
@@ -283,7 +188,7 @@ class VoiceManager:
                 
                 for i, voice in enumerate(system_voices):
                     # Extract gender from voice name/id
-                    gender = "female" if any(term in voice.name.lower() for term in ["female", "woman", "zira", "hazel"]) else "male"
+                    gender = "female" if any(term in voice.name.lower() for term in ["female", "woman", "zira", "hazel", "femme"]) else "male"
                     
                     voices.append(VoiceInfo(
                         voice_id=f"pyttsx3_{i}",
@@ -314,8 +219,8 @@ class VoiceManager:
                 gender="neutral",
                 age="adult",
                 style="neutral",
-                engine="gtts",
-                neural=False,
+                engine="piper",
+                neural=True,
                 sample_rate=22050
             )
         ]

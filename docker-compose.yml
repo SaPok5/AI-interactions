@@ -193,6 +193,8 @@ services:
       - REDIS_URL=redis://redis:6379
       - GPU_ENABLED=true
       - CUDA_VISIBLE_DEVICES=1
+      - ENABLE_GEMINI_TTS=true
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
     volumes:
       - ./services/tts:/app
       - ./data/models:/models:ro
@@ -227,14 +229,16 @@ services:
       - "8007:8007"
     environment:
       - REDIS_URL=redis://redis:6379
-      - DEFAULT_PROVIDER=openai
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - DEBUG=false
+      - ENABLE_NEURAL_VOICES=true
+      - ENABLE_PYTTSX3_VOICES=false
+      - ENABLE_OPENAI_TTS=true
+      - OPENAI_API_KEY=${OPENAI_API_KEY}${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
       - ENABLE_LOCAL_MODELS=false
     volumes:
       - ./services/llm:/app
-      - llm_data:/app/data
     networks:
       - voice-assistant
     restart: unless-stopped
@@ -369,7 +373,7 @@ services:
       - "8443:443"
     volumes:
       - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf
-      - ./clients/demo:/var/www/static
+      - ./clients:/var/www/static
       - ./infra/nginx/ssl:/etc/nginx/ssl
     networks:
       - voice-assistant

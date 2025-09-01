@@ -69,24 +69,44 @@ class ASREngine:
             logger.error("Error processing audio chunk", error=str(e), session_id=session_id)
             return None
     
-    async def transcribe_complete(self, audio: np.ndarray, language: Optional[str] = None) -> ASRResult:
-        """Transcribe complete audio file"""
+    async def transcribe_complete(self, audio: np.ndarray, language: str = "auto", fast_mode: bool = False) -> Optional[ASRResult]:
+        """Complete transcription of audio segment with optional fast mode"""
         if not self.model:
-            raise RuntimeError("ASR model not loaded")
-        
-        start_time = datetime.utcnow()
+            logger.error("ASR model not initialized")
+            return None
         
         try:
+            start_time = datetime.utcnow()
+            
+            # Ensure audio is float32 and normalized
+            if audio.dtype != np.float32:
+                audio = audio.astype(np.float32)
+            
+            # Normalize if needed
+            if np.max(np.abs(audio)) > 1.0:
+                audio = audio / np.max(np.abs(audio))
+            
+            logger.info("Starting complete transcription", 
+                       audio_length=len(audio), 
+                       sample_rate=16000,
+                       language=language,
+                       fast_mode=fast_mode)
+            
+            # Optimize settings for fast mode
+            beam_size = 1 if fast_mode else settings.beam_size
+            temperature = 0.0 if fast_mode else settings.temperature
+            word_timestamps = not fast_mode  # Skip word timestamps in fast mode
+            
             # Run transcription in thread pool
             loop = asyncio.get_event_loop()
             segments, info = await loop.run_in_executor(
                 None,
                 lambda: self.model.transcribe(
                     audio,
-                    beam_size=settings.beam_size,
-                    temperature=settings.temperature,
+                    beam_size=beam_size,
+                    temperature=temperature,
                     language=language if language != "auto" else None,
-                    word_timestamps=True
+                    word_timestamps=word_timestamps
                 )
             )
             

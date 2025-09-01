@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     google_api_key: str = Field(default="", env="GOOGLE_API_KEY")
     
     # Model settings
-    default_model: str = "gemini-pro"
+    default_model: str = "gemini-1.5-flash"
     max_tokens: int = 2000
     temperature: float = 0.7
     top_p: float = 0.9
